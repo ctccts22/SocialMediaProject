@@ -111,7 +111,7 @@ async def current_user(token: str, db: Session = Depends(get_db)):
     return db_user
 
 
-# update user
+# update user header에 있는 토큰을 이용해서 validation 하는 코드로 수정 할 예정
 @router.put("/{username}", status_code=status.HTTP_204_NO_CONTENT)
 async def update_user(
         username: str,
