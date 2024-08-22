@@ -16,5 +16,12 @@
         </library>
       </libraries>
     </data-source>
+    <data-source source="LOCAL" name="0@localhost" uuid="8ae5e4be-6cf2-42fa-9954-7e612d3b43df">
+      <driver-ref>redis</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>jdbc.RedisDriver</jdbc-driver>
+      <jdbc-url>jdbc:redis://localhost:6379/0</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

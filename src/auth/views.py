@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, Response, Cookie
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -8,10 +8,12 @@ from ..database import get_db
 from .service import (
     existing_user,
     create_access_token,
+    create_refresh_token,
     get_current_user,
     create_user as create_user_svc,
     authenticate,
     update_user as update_user_svc,
+    call_refresh_token,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -29,6 +31,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
         )
 
     db_user = await create_user_svc(db, user)
+    # check it creates access_token after done with signup
     access_token = await create_access_token(user.username, db_user.id)
 
     return {
@@ -39,9 +42,13 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
 
 # login to generate token
-@router.post("/token", status_code=status.HTTP_201_CREATED)
+# form_data : help to loginForm with secured username&password
+@router.post("/signin", status_code=status.HTTP_201_CREATED)
 async def login(
-        form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+        response: Response,
+        form_data: OAuth2PasswordRequestForm = Depends(),
+        refresh_token: str = Cookie(None), # get refreshToken from cookie
+        db: Session = Depends(get_db)
 ):
     db_user = await authenticate(db, form_data.username, form_data.password)
     if not db_user:
@@ -49,9 +56,42 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="incorrect username or password",
         )
+    # if refresh_token exist, call access_token from redis
+    if refresh_token:
+        call_access_token = await call_refresh_token(refresh_token)
+        if call_access_token:
+            return {
+                "access_token": call_access_token,
+                "token_type": "bearer",
+                "refresh_token": refresh_token
+            }
 
+    # create access_token and send to frontend then it deals with token with whatever method
     access_token = await create_access_token(db_user.username, db_user.id)
-    return {"access_token": access_token, "token_type": "bearer"}
+    # Make a refresh_token in cookie,
+    refresh_token = await create_refresh_token(response, access_token)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "refresh_token": refresh_token
+    }
+
+# frontend need access_token to handle many things
+@router.get("/refresh", status_code=status.HTTP_200_OK)
+async def get_access_token(refresh_token: str = Cookie(None)):
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Refresh token not found or invalid")
+
+    access_token = await call_refresh_token(refresh_token)
+
+    if not access_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Could not refresh access token")
+
+    return {"access_token": access_token}
+
 
 
 # get current user

@@ -21,3 +21,4 @@ class User(Base):
     bio = Column(String)
     location = Column(String)
 
+    # role

@@ -11,6 +11,7 @@ python-jose = {extras = ["cryptography"], version = "*"}
 python-multipart = "*"
 passlib = "*"
 bcrypt = "*"
+redis = "*"
 
 [dev-packages]
 
