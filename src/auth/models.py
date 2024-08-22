@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, String, Enum
 from datetime import datetime
 
-from .enums import Gender
+from .enums import Gender, Role
 from ..database import Base
 
 class User(Base):
@@ -22,3 +22,4 @@ class User(Base):
     location = Column(String)
 
     # role
+    role = Column(Enum(Role), nullable=False, default=Role.USER.value)

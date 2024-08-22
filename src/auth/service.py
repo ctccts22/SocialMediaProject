@@ -1,4 +1,4 @@
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status, Cookie
 from sqlalchemy.orm import Session
 
 from passlib.context import CryptContext
@@ -6,8 +6,12 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from datetime import timedelta, datetime
 
+from sqlalchemy.testing.suite.test_reflection import users
+
 from .models import User
 from .schemas import UserCreate, UserUpdate
+
+from .enums import Role
 
 from uuid import uuid4
 
@@ -27,8 +31,8 @@ async def existing_user(db: Session, username: str, email: str):
     return db_user
 
 
-async def create_access_token(username: str, id: int):
-    encode = {"sub": username, "id": id}
+async def create_access_token(username: str, id: int, role: str):
+    encode = {"sub": username, "id": id, "role": role}
     expires = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINS)
     encode.update({"exp": expires})
 
@@ -45,12 +49,13 @@ async def call_refresh_token(refresh_token):
 
 async def create_refresh_token(response, access_token: str):
     refresh_token = str(uuid4())
+
     redis_client.set(refresh_token, access_token, ex=REFRESH_TOKEN_EXPIRE_MINS)
 
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
-        max_age=3600, # 1 hour
+        max_age=3600,  # 1 hour
         httponly=False,  # it should be changed with "True"
         secure=False,  # it should be changed with "True"
         samesite="lax"  # or Strict
@@ -59,19 +64,49 @@ async def create_refresh_token(response, access_token: str):
     return refresh_token
 
 
-async def get_current_user(db: Session, token: str = Depends(oauth2_bearer)):
+async def get_current_user(
+        db: Session = Depends(),
+        token: str = Depends(oauth2_bearer)
+):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+    )
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        id: str = payload.get("id")
+        user_id: str = payload.get("id")
+        role: str = payload.get("role")
         expires: datetime = payload.get("exp")
+
+        # Check if the token has expired
         if datetime.fromtimestamp(expires) < datetime.now():
-            return None
-        if username is None or id is None:
-            return None
-        return db.query(User).filter(User.id == id).first()
+            raise credentials_exception
+
+        if username is None or user_id is None or role is None:
+            raise credentials_exception
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            raise credentials_exception
+
+        return user
+
     except JWTError:
-        return None
+        raise credentials_exception
+
+
+async def require_role(required_role: Role):
+    def role_checker(user: dict = Depends(get_current_user)):
+        if Role(user["role"]) != required_role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Operation not permitted",
+            )
+        return user
+
+    return role_checker
 
 
 async def get_user_from_user_id(db: Session, user_id: int):
@@ -82,12 +117,13 @@ async def create_user(db: Session, user: UserCreate):
     db_user = User(
         email=user.email.lower().strip(),
         username=user.username.lower().strip(),
+        # role default USER
         hashed_password=bcrypt_context.hash(user.password),
         dob=user.dob or None,
         gender=user.gender or None,
         location=user.location or None,
         profile_pic=user.profile_pic or None,
-        name=user.name or None
+        name=user.name or None,
     )
     db.add(db_user)
     db.commit()
