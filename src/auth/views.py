@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, status, HTTPException, Request, Response
-from fastapi.security import OAuth2PasswordRequestForm
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, status, HTTPException, Request, Response, Security
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from .enums import Role
-from .schemas import UserCreate, UserUpdate, User as UserSchema, UserAuth
+from .schemas import UserCreate, UserUpdate, User
 from ..database import get_db
 from .service import (
     existing_user,
@@ -14,11 +15,11 @@ from .service import (
     create_user as create_user_svc,
     authenticate,
     update_user as update_user_svc,
-    call_refresh_token, require_role,
+    call_refresh_token, role_checker, role_checker_dep,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="v1/auth/token")
 
 # signup
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
@@ -44,7 +45,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
 # login to generate token
 # form_data : help to loginForm with secured username&password
-@router.post("/signin", status_code=status.HTTP_201_CREATED)
+@router.post("/token", status_code=status.HTTP_201_CREATED)
 async def login(
         request: Request,
         response: Response,
@@ -100,8 +101,12 @@ async def get_access_token(
 
 
 # get current user
-@router.get("/profile", status_code=status.HTTP_200_OK, response_model=UserSchema)
-async def current_user(token: str, db: Session = Depends(get_db)):
+@router.get("/profile", status_code=status.HTTP_200_OK, response_model=User)
+async def current_user(
+        token: str = Security(oauth2_scheme),
+        db: Session = Depends(get_db),
+        _: bool = Depends(role_checker_dep("user"))
+):
     db_user = await get_current_user(db, token)
     if not db_user:
         raise HTTPException(
@@ -116,18 +121,10 @@ async def current_user(token: str, db: Session = Depends(get_db)):
 async def update_user(
         username: str,
         user_update: UserUpdate,
-        token: str,
+        token: str = Security(oauth2_scheme),
         db: Session = Depends(get_db),
 ):
-    # how to make rbac more efficiently
     db_user = await get_current_user(db, token)
-    role = db_user.role
-    if role != Role.USER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="user role is not matching",
-        )
-    ########
 
     if db_user.username != username:
         raise HTTPException(

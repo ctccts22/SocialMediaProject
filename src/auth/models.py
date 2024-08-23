@@ -1,10 +1,10 @@
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, String, Enum
+from sqlalchemy import Column, Date, DateTime, Integer, String, Enum
 from datetime import datetime
 
 from .enums import Gender, Role
 from ..database import Base
 
-class User(Base):
+class Users(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)

@@ -12,6 +12,7 @@ python-multipart = "*"
 passlib = "*"
 bcrypt = "*"
 redis = "*"
+pydantic = "*"
 
 [dev-packages]
 

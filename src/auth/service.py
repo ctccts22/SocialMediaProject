@@ -1,4 +1,6 @@
-from fastapi import Depends, HTTPException, status, Cookie
+from typing import Type
+
+from fastapi import Depends, HTTPException, status, Cookie, Security
 from sqlalchemy.orm import Session
 
 from passlib.context import CryptContext
@@ -6,19 +8,16 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from datetime import timedelta, datetime
 
-from sqlalchemy.testing.suite.test_reflection import users
-
-from .models import User
-from .schemas import UserCreate, UserUpdate
-
 from .enums import Role
+from .models import Users
+from .schemas import UserCreate, UserUpdate
 
 from uuid import uuid4
 
 from ..redis import redis_client
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_bearer = OAuth2PasswordBearer(tokenUrl="v1/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="v1/auth/token")
 SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINS = 60 * 24 * 30  # 30days
@@ -26,8 +25,8 @@ REFRESH_TOKEN_EXPIRE_MINS = 60 * 60 * 24 * 7  # 7days
 
 
 async def existing_user(db: Session, username: str, email: str):
-    db_user = db.query(User).filter(User.username == username).first()
-    db_user = db.query(User).filter(User.email == email).first()
+    db_user = db.query(Users).filter(Users.username == username).first()
+    db_user = db.query(Users).filter(Users.email == email).first()
     return db_user
 
 
@@ -66,7 +65,7 @@ async def create_refresh_token(response, access_token: str):
 
 async def get_current_user(
         db: Session = Depends(),
-        token: str = Depends(oauth2_bearer)
+        token: str = Security(oauth2_scheme)
 ):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -77,7 +76,7 @@ async def get_current_user(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         user_id: str = payload.get("id")
-        role: str = payload.get("role")
+        role: Role = payload.get("role")
         expires: datetime = payload.get("exp")
 
         # Check if the token has expired
@@ -87,7 +86,7 @@ async def get_current_user(
         if username is None or user_id is None or role is None:
             raise credentials_exception
 
-        user = db.query(User).filter(User.id == user_id).first()
+        user = db.query(Users).filter(Users.id == user_id).first()
         if user is None:
             raise credentials_exception
 
@@ -97,24 +96,12 @@ async def get_current_user(
         raise credentials_exception
 
 
-async def require_role(required_role: Role):
-    def role_checker(user: dict = Depends(get_current_user)):
-        if Role(user["role"]) != required_role:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Operation not permitted",
-            )
-        return user
-
-    return role_checker
-
-
 async def get_user_from_user_id(db: Session, user_id: int):
-    return db.query(User).filter(User.id == user_id).first()
+    return db.query(Users).filter(Users.id == user_id).first()
 
 
 async def create_user(db: Session, user: UserCreate):
-    db_user = User(
+    db_user = Users(
         email=user.email.lower().strip(),
         username=user.username.lower().strip(),
         # role default USER
@@ -130,8 +117,23 @@ async def create_user(db: Session, user: UserCreate):
     return db_user
 
 
+async def role_checker(allowed_role: str, token: str = Security(oauth2_scheme)):
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    role = payload.get("role")
+    if role != allowed_role:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="You don't have enough permissions"
+        )
+    return True
+
+def role_checker_dep(allowed_role: str):
+    async def checker(token: str = Security(oauth2_scheme)):
+        return await role_checker(allowed_role, token)
+    return checker
+
 async def authenticate(db: Session, username: str, password: str):
-    db_user = db.query(User).filter(User.username == username).first()
+    db_user = db.query(Users).filter(Users.username == username).first()
     if not db_user:
         return None
     if not bcrypt_context.verify(password, db_user.hashed_password):
@@ -139,7 +141,7 @@ async def authenticate(db: Session, username: str, password: str):
     return db_user
 
 
-async def update_user(db: Session, db_user: User, user_update: UserUpdate):
+async def update_user(db: Session, db_user: Users, user_update: UserUpdate):
     db_user.bio = user_update.bio or db_user.bio
     db_user.name = user_update.name or db_user.name
     db_user.dob = user_update.dob or db_user.dob

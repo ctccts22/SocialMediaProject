@@ -1,9 +1,7 @@
 from pydantic import BaseModel
 from datetime import date, datetime
-from typing import Optional
 
-from .enums import Gender
-
+from .enums import Gender, Role
 
 class UserBase(BaseModel):
     email: str
@@ -16,26 +14,26 @@ class UserAuth(BaseModel):
 
 class UserCreate(UserBase):
     password: str
-    name: Optional[str] = None
-    dob: Optional[date] = None
-    gender: Optional[Gender] = None
-    bio: Optional[str] = None
-    location: Optional[str] = None
-    profile_pic: Optional[str] = None
+    name: str | None = None
+    dob: date | None = None
+    gender: Gender | None = None
+    bio: str | None = None
+    location: str | None = None
+    profile_pic: str | None = None
 
 
 class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    dob: Optional[date] = None
-    gender: Optional[Gender] = None
-    bio: Optional[str] = None
-    location: Optional[str] = None
-    profile_pic: Optional[str] = None
+    name: str | None = None
+    dob: date | None = None
+    gender: Gender | None = None
+    bio: str | None = None
+    location: str | None = None
+    profile_pic: str | None = None
 
 
 class User(UserBase, UserUpdate):
     id: int
-    role: str
+    role: Role
     created_dt: datetime
 
     class Config:
