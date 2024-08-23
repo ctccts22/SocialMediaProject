@@ -7,10 +7,12 @@ class UserBase(BaseModel):
     email: str
     username: str
 
-class UserAuth(BaseModel):
-    id: int
-    username: str
-    role: str
+class AccessToken(BaseModel):
+    access_token: str
+    token_type: str
+
+class Token(AccessToken):
+    refresh_token: str
 
 class UserCreate(UserBase):
     password: str

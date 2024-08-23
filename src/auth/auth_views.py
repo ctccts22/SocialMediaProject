@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, status, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
+from .schemas import Token, AccessToken
 from ..database import get_db
 
 from .security_service import (
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/auth", tags=["auth(login)"])
 
 # login to generate token
 # form_data : help to loginForm with secured username&password
-@router.post("/token", status_code=status.HTTP_201_CREATED)
+@router.post("/token", status_code=status.HTTP_201_CREATED, response_model=Token)
 async def login(
         request: Request,
         response: Response,
@@ -54,7 +55,7 @@ async def login(
 
 
 # frontend need access_token to handle many things
-@router.get("/refresh", status_code=status.HTTP_200_OK)
+@router.get("/refresh", status_code=status.HTTP_200_OK, response_model=AccessToken)
 async def get_access_token(
         request: Request,
 ):
@@ -69,4 +70,4 @@ async def get_access_token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Could not refresh access token")
 
-    return {"access_token": access_token}
+    return {"access_token": access_token, "token_type": "bearer"}
