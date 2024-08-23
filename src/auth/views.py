@@ -1,25 +1,31 @@
-from typing import Annotated
-
 from fastapi import APIRouter, Depends, status, HTTPException, Request, Response, Security
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from datetime import datetime
 
-from .schemas import UserCreate, UserUpdate, User
 from ..database import get_db
-from .service import (
-    existing_user,
+
+from .schemas import (
+    UserCreate,
+    UserUpdate,
+    User
+)
+
+from .security import (
     create_access_token,
     create_refresh_token,
     get_current_user,
-    create_user as create_user_svc,
     authenticate,
-    update_user as update_user_svc,
     call_refresh_token, role_checker, role_checker_dep,
+)
+from .service import (
+    existing_user,
+    create_user as create_user_svc,
+    update_user as update_user_svc,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="v1/auth/token")
+
 
 # signup
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
@@ -116,13 +122,13 @@ async def current_user(
     return db_user
 
 
-# update user header에 있는 토큰을 이용해서 validation 하는 코드로 수정 할 예정
 @router.put("/{username}", status_code=status.HTTP_204_NO_CONTENT)
 async def update_user(
         username: str,
         user_update: UserUpdate,
         token: str = Security(oauth2_scheme),
         db: Session = Depends(get_db),
+        _: bool = Depends(role_checker_dep("user"))
 ):
     db_user = await get_current_user(db, token)
 
