@@ -23,3 +23,9 @@ class Users(Base):
 
     # role
     role = Column(Enum(Role), nullable=False, default=Role.USER.value)
+
+class Roles(Base):
+    __tablename__ = "roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    role = Column(Enum(Role), nullable=False, default=Role.USER.value)
